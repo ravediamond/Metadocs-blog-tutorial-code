@@ -3,85 +3,83 @@ import os
 from dotenv import load_dotenv
 import streamlit as st
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
+from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import ConfigurableField
 from langchain_community.vectorstores import FAISS
 from langchain_core.output_parsers import StrOutputParser
+from enum import Enum
+
 
 # Load the variables from .env
 load_dotenv()
 
-print(os.environ["OPENAI_KEY"])
-
 st.title("Hello, Metadocs readers!")
 
+
+class Scenario(Enum):
+    ONE_VECTOR_STORE_SINGLE_LINE = "one_vector_store_single_line"
+    ONE_VECTOR_STORE_DETAILED = "one_vector_store_detailed"
+    TWO_VECTOR_STORES_SINGLE_LINE = "two_vector_stores_single_line"
+    TWO_VECTOR_STORES_DETAILED = "two_vector_stores_detailed"
+
+
 # Base templates for vector store prompts
-base_template_two_stores = """Answer the question based on the following contexts:
+template_one_store_single_line = PromptTemplate.from_template(
+    """Answer the question in a single line based on the following context:
+{context}
+
+Question: {question}
+"""
+)
+
+template_one_store_detailed = PromptTemplate.from_template(
+    """Answer the question in a detailed way with an idea per bullet point based on the following context:
+{context}
+
+Question: {question}
+"""
+)
+
+base_template_two_stores_single_line = PromptTemplate.from_template(
+    """Answer the question in a single line based on the following contexts:
 {context1}
 
 {context2}
 
 Question: {question}
 """
+)
 
-base_template_one_store = """Answer the question based on the following context:
-{context}
+base_template_two_stores_detailed = PromptTemplate.from_template(
+    """Answer the question in a detailed way with an idea per bullet based on the following contexts:
+{context1}
+
+{context2}
 
 Question: {question}
 """
+)
+
+scenario_name = []
+
+prompt_alternatives = {
+    Scenario.ONE_VECTOR_STORE_DETAILED.value: template_one_store_detailed,
+    Scenario.TWO_VECTOR_STORES_SINGLE_LINE.value: base_template_two_stores_single_line,
+    Scenario.TWO_VECTOR_STORES_DETAILED.value: base_template_two_stores_detailed,
+}
 
 # Configurable prompt templates with alternatives for detailed and summary answers
-prompt_two_stores = PromptTemplate.from_template(
-    base_template_two_stores
-).configurable_alternatives(
+
+configurable_prompt = template_one_store_single_line.configurable_alternatives(
     which=ConfigurableField(
-        id="output_type",
-        name="Output Type",
-        description="Choose detailed or summary for the type of answer.",
+        id="scenario",
+        name="Scenario",
+        description="The scenario to use",
     ),
-    detailed=ChatPromptTemplate.from_template(
-        """Provide a detailed answer to the question, based on:
-{context1}
-
-{context2}
-
-Question: {question}
-"""
-    ),
-    summary=ChatPromptTemplate.from_template(
-        """Provide a summary answer to the question, based on:
-{context1}
-
-{context2}
-
-Question: {question}
-"""
-    ),
+    default_key=Scenario.ONE_VECTOR_STORE_SINGLE_LINE.value,
+    **prompt_alternatives
 )
 
-prompt_one_store = PromptTemplate.from_template(
-    base_template_one_store
-).configurable_alternatives(
-    which=ConfigurableField(
-        id="output_type",
-        name="Output Type",
-        description="Choose detailed or summary for the type of answer.",
-    ),
-    detailed=ChatPromptTemplate.from_template(
-        """Provide a detailed answer to the question, based on:
-{context}
-
-Question: {question}
-"""
-    ),
-    summary=ChatPromptTemplate.from_template(
-        """Provide a summary answer to the question, based on:
-{context}
-
-Question: {question}
-"""
-    ),
-)
 
 model = ChatOpenAI(
     temperature=0,
@@ -120,32 +118,44 @@ with tab1:
 with tab2:
     st.header("Query a Vector Store")
     if first_retriever or second_retriever:
-        use_two_stores = st.checkbox("Use two vector stores for the query", value=False)
+        vector_store_selection = st.selectbox(
+            "Choose the vector store configuration:",
+            ["First only", "Second only", "Both"],
+        )
         output_type = st.selectbox(
-            "Select the type of response:", ["detailed", "summary"]
+            "Select the type of response:", ["detailed", "single line"]
         )
 
         question = st.text_input("Input your question:")
         if st.button("Get Answer"):
-            if use_two_stores and first_retriever and second_retriever:
+            if vector_store_selection == "First only" and output_type == "single line":
+                scenario = Scenario.ONE_VECTOR_STORE_SINGLE_LINE.value
+                context = {"context": first_retriever, "question": question}
+
+            elif vector_store_selection == "Both" and output_type == "detailed":
+                scenario = Scenario.ONE_VECTOR_STORE_DETAILED.value
+                context = {"context": second_retriever, "question": question}
+
+            elif vector_store_selection == "Both" and output_type == "single line":
+                scenario = Scenario.TWO_VECTOR_STORES_SINGLE_LINE.value
                 context = {
                     "context1": first_retriever,
                     "context2": second_retriever,
                     "question": question,
                 }
-                chosen_prompt = prompt_two_stores.choose(output_type)
-            elif first_retriever:
-                context = {"context": first_retriever, "question": question}
-                chosen_prompt = prompt_one_store.choose(output_type)
-            elif second_retriever:
-                context = {"context": second_retriever, "question": question}
-                chosen_prompt = prompt_one_store.choose(output_type)
+            elif vector_store_selection == "Both" and output_type == "detailed":
+                scenario = Scenario.TWO_VECTOR_STORES_DETAILED.value
+                context = {
+                    "context1": first_retriever,
+                    "context2": second_retriever,
+                    "question": question,
+                }
             else:
-                st.error(
-                    "No vector store loaded to query. Please upload at least one file."
-                )
+                st.write("There is an error.")
 
-            chain = context | chosen_prompt | model | StrOutputParser()
+            chain = (
+                context | configurable_prompt | model | StrOutputParser()
+            ).with_config(configurable={"scenario": scenario})
 
             result = chain.invoke(question)
             st.write(result)
