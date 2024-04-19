@@ -1,5 +1,7 @@
 import os
 from typing import List, Optional
+from operator import itemgetter
+
 
 from dotenv import load_dotenv
 import streamlit as st
@@ -11,6 +13,7 @@ from langchain.schema.runnable import (
     ConfigurableField,
     RunnableConfig,
     RunnableSerializable,
+    RunnableMap,
 )
 from langchain_community.vectorstores import FAISS
 from langchain_core.output_parsers import StrOutputParser
@@ -109,6 +112,29 @@ def combine_documents(
     return document_separator.join(doc_strings)
 
 
+CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template(
+    """Given the following conversation and a follow up question, rephrase the 
+follow up question to be a standalone question, in its original language.
+
+Chat History:
+{chat_history}
+Follow Up Input: {question}
+Standalone question:"""
+)
+
+
+def format_chat_history(chat_history: dict) -> str:
+    """Format chat history into a string."""
+    buffer = ""
+    for dialogue_turn in chat_history:
+        actor = "Human" if dialogue_turn["role"] == "user" else "Assistant"
+        buffer += f"{actor}: {dialogue_turn['content']}\n"
+    return buffer
+
+
+vector_store_topic = None
+output_type = None
+
 tab1, tab2 = st.tabs(["Upload Files", "Query"])
 
 with tab1:
@@ -148,23 +174,53 @@ with tab2:
             "Select the type of response:", ["detailed", "single_line"]
         )
 
-        question = st.text_input("Input your question:")
-        if st.button("Get Answer"):
+        if "message" not in st.session_state:
+            st.session_state["message"] = [
+                {"role": "assistant", "content": "Hello 👋, How can I assist you ?"}
+            ]
 
-            context = {
-                "context": configurable_faiss_vector_store | combine_documents,
-                "question": RunnablePassthrough(),
-            }
-
-            chain = (
-                context | configurable_prompt | model | StrOutputParser()
-            ).with_config(
-                configurable={
-                    "vector_store_topic": vector_store_topic,
-                    "output_type": output_type,
-                }
+        chat_history = []
+        inputs = RunnableMap(
+            standalone_question=RunnablePassthrough.assign(
+                chat_history=lambda x: format_chat_history(x["chat_history"])
             )
-            result = chain.invoke(question)
-            st.write(result)
+            | CONDENSE_QUESTION_PROMPT
+            | model
+            | StrOutputParser(),
+        )
+
+        context = {
+            "context": itemgetter("standalone_question")
+            | configurable_faiss_vector_store
+            | combine_documents,
+            "question": itemgetter("standalone_question"),
+        }
+        chain = (
+            inputs | context | configurable_prompt | model | StrOutputParser()
+        ).with_config(
+            configurable={
+                "vector_store_topic": vector_store_topic,
+                "output_type": output_type,
+            }
+        )
+
+        for message in st.session_state.message:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+        query = st.chat_input("Ask me anything")
+
+        if query:
+            st.session_state.message.append({"role": "user", "content": query})
+            with st.chat_message("user"):
+                st.markdown(query)
+
+            with st.chat_message("assistant"):
+                response = chain.invoke(
+                    {"question": query, "chat_history": st.session_state.message}
+                )
+                st.markdown(response)
+
+            st.session_state.message.append({"role": "assistant", "content": response})
     else:
         st.write("Please upload files to the vector stores before querying.")
