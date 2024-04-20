@@ -26,7 +26,8 @@ st.title("Hello, Metadocs readers!")
 
 # Base templates for vector store prompts
 template_single_line = PromptTemplate.from_template(
-    """Answer the question in a single line based on the following context:
+    """Answer the question in a single line based on the following context.
+    If there is not relevant information in the context, just say that you do not know:
 {context}
 
 Question: {question}
@@ -34,7 +35,8 @@ Question: {question}
 )
 
 template_detailed = PromptTemplate.from_template(
-    """Answer the question in a detailed way with an idea per bullet point based on the following context:
+    """Answer the question in a detailed way with an idea per bullet point based on the following context.
+    If there is not relevant information in the context, just say that you do not know:
 {context}
 
 Question: {question}
@@ -77,7 +79,7 @@ class ConfigurableFaissRetriever(RunnableSerializable[str, List[Document]]):
 
         vector_store_path = (
             politic_vector_store_path
-            if "politic" in vector_store_topic
+            if "Politic" in vector_store_topic
             else environnetal_vector_store_path
         )
         faiss_vector_store = FAISS.load_local(
@@ -92,7 +94,7 @@ class ConfigurableFaissRetriever(RunnableSerializable[str, List[Document]]):
 
 
 configurable_faiss_vector_store = ConfigurableFaissRetriever(
-    vector_store_topic="politic"
+    vector_store_topic="default"
 ).configurable_fields(
     vector_store_topic=ConfigurableField(
         id="vector_store_topic",
@@ -135,10 +137,7 @@ def format_chat_history(chat_history: dict) -> str:
 vector_store_topic = None
 output_type = None
 
-tab1, tab2 = st.tabs(["Upload Files", "Query"])
-
-with tab1:
-    st.header("Upload Files to Vector Stores")
+with st.expander("Upload Files to Vector Stores"):
     politic_index_uploaded_file = st.file_uploader(
         "Upload a text file to Politic vector store:", type="txt", key="politic_index"
     )
@@ -161,66 +160,62 @@ with tab1:
         environnetal_vectorstore.save_local(environnetal_vector_store_path)
         st.success("Environnemental vector store loaded successfully!")
 
-with tab2:
-    st.header("Query a Vector Store")
-    if os.path.exists(politic_vector_store_path) or os.path.exists(
-        environnetal_vector_store_path
-    ):
-        vector_store_topic = st.selectbox(
-            "Choose the vector store configuration:",
-            ["Politic", "Environnemental"],
-        )
-        output_type = st.selectbox(
-            "Select the type of response:", ["detailed", "single_line"]
-        )
 
-        if "message" not in st.session_state:
-            st.session_state["message"] = [
-                {"role": "assistant", "content": "Hello 👋, How can I assist you ?"}
-            ]
+st.header("Chat with your vector stores")
+if os.path.exists(politic_vector_store_path) or os.path.exists(
+    environnetal_vector_store_path
+):
+    vector_store_topic = st.selectbox(
+        "Choose the vector store configuration:",
+        ["Politic", "Environnemental"],
+    )
+    output_type = st.selectbox(
+        "Select the type of response:", ["detailed", "single_line"]
+    )
 
-        chat_history = []
-        inputs = RunnableMap(
-            standalone_question=RunnablePassthrough.assign(
-                chat_history=lambda x: format_chat_history(x["chat_history"])
-            )
-            | CONDENSE_QUESTION_PROMPT
-            | model
-            | StrOutputParser(),
+    if "message" not in st.session_state:
+        st.session_state["message"] = [
+            {"role": "assistant", "content": "Hello 👋, How can I assist you ?"}
+        ]
+
+    chat_history = []
+    inputs = RunnableMap(
+        standalone_question=RunnablePassthrough.assign(
+            chat_history=lambda x: format_chat_history(x["chat_history"])
         )
+        | CONDENSE_QUESTION_PROMPT
+        | model
+        | StrOutputParser(),
+    )
 
-        context = {
-            "context": itemgetter("standalone_question")
-            | configurable_faiss_vector_store
-            | combine_documents,
-            "question": itemgetter("standalone_question"),
+    context = {
+        "context": itemgetter("standalone_question")
+        | configurable_faiss_vector_store
+        | combine_documents,
+        "question": itemgetter("standalone_question"),
+    }
+    chain = (
+        inputs | context | configurable_prompt | model | StrOutputParser()
+    ).with_config(
+        configurable={
+            "vector_store_topic": vector_store_topic,
+            "output_type": output_type,
         }
-        chain = (
-            inputs | context | configurable_prompt | model | StrOutputParser()
-        ).with_config(
-            configurable={
-                "vector_store_topic": vector_store_topic,
-                "output_type": output_type,
-            }
+    )
+
+    for message in st.session_state.message:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    if query := st.chat_input("Ask me anything"):
+        st.session_state.message.append({"role": "user", "content": query})
+        with st.chat_message("user"):
+            st.markdown(query)
+
+        response = chain.invoke(
+            {"question": query, "chat_history": st.session_state.message}
         )
 
-        for message in st.session_state.message:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-
-        query = st.chat_input("Ask me anything")
-
-        if query:
-            st.session_state.message.append({"role": "user", "content": query})
-            with st.chat_message("user"):
-                st.markdown(query)
-
-            with st.chat_message("assistant"):
-                response = chain.invoke(
-                    {"question": query, "chat_history": st.session_state.message}
-                )
-                st.markdown(response)
-
-            st.session_state.message.append({"role": "assistant", "content": response})
-    else:
-        st.write("Please upload files to the vector stores before querying.")
+        st.session_state.message.append({"role": "assistant", "content": response})
+        with st.chat_message("assistant"):
+            st.markdown(response)
