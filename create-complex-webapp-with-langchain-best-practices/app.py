@@ -137,6 +137,30 @@ def format_chat_history(chat_history: dict) -> str:
 vector_store_topic = None
 output_type = None
 
+inputs = RunnableMap(
+    standalone_question=RunnablePassthrough.assign(
+        chat_history=lambda x: format_chat_history(x["chat_history"])
+    )
+    | CONDENSE_QUESTION_PROMPT
+    | model
+    | StrOutputParser(),
+)
+
+context = {
+    "context": itemgetter("standalone_question")
+    | configurable_faiss_vector_store
+    | combine_documents,
+    "question": itemgetter("standalone_question"),
+}
+chain = (
+    inputs | context | configurable_prompt | model | StrOutputParser()
+).with_config(
+    configurable={
+        "vector_store_topic": vector_store_topic,
+        "output_type": output_type,
+    }
+)
+
 with st.expander("Upload Files to Vector Stores"):
     politic_index_uploaded_file = st.file_uploader(
         "Upload a text file to Politic vector store:", type="txt", key="politic_index"
@@ -179,29 +203,6 @@ if os.path.exists(politic_vector_store_path) or os.path.exists(
         ]
 
     chat_history = []
-    inputs = RunnableMap(
-        standalone_question=RunnablePassthrough.assign(
-            chat_history=lambda x: format_chat_history(x["chat_history"])
-        )
-        | CONDENSE_QUESTION_PROMPT
-        | model
-        | StrOutputParser(),
-    )
-
-    context = {
-        "context": itemgetter("standalone_question")
-        | configurable_faiss_vector_store
-        | combine_documents,
-        "question": itemgetter("standalone_question"),
-    }
-    chain = (
-        inputs | context | configurable_prompt | model | StrOutputParser()
-    ).with_config(
-        configurable={
-            "vector_store_topic": vector_store_topic,
-            "output_type": output_type,
-        }
-    )
 
     for message in st.session_state.message:
         with st.chat_message(message["role"]):
@@ -212,9 +213,12 @@ if os.path.exists(politic_vector_store_path) or os.path.exists(
         with st.chat_message("user"):
             st.markdown(query)
 
-        response = chain.invoke(
-            {"question": query, "chat_history": st.session_state.message}
-        )
+        response = chain.with_config(
+            configurable={
+                "vector_store_topic": vector_store_topic,
+                "output_type": output_type,
+            }
+        ).invoke({"question": query, "chat_history": st.session_state.message})
 
         st.session_state.message.append({"role": "assistant", "content": response})
         with st.chat_message("assistant"):
