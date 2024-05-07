@@ -152,14 +152,7 @@ context = {
     | combine_documents,
     "question": itemgetter("standalone_question"),
 }
-chain = (
-    inputs | context | configurable_prompt | model | StrOutputParser()
-).with_config(
-    configurable={
-        "vector_store_topic": vector_store_topic,
-        "output_type": output_type,
-    }
-)
+chain = inputs | context | configurable_prompt | model | StrOutputParser()
 
 with st.expander("Upload Files to Vector Stores"):
     politic_index_uploaded_file = st.file_uploader(
