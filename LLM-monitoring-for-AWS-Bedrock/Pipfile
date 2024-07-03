@@ -1,0 +1,16 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+jupyterlab = "*"
+langchain = "0.2.6"
+boto3 = "1.34.137"
+langchain-aws = "0.1.9"
+langfuse = "2.36.2"
+
+[dev-packages]
+
+[requires]
+python_version = "3.8"
