@@ -1,12 +1,12 @@
 import os
 
-from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from langserve import add_routes
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from dotenv import load_dotenv
 
 load_dotenv()
 
