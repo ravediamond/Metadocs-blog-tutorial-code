@@ -57,6 +57,6 @@ if uploaded_file is not None:
 
 question = st.text_input("Input your question for the uploaded document")
 
-result = chain.invoke(question)
-
-st.write(result)
+if question:
+    result = chain.invoke(question)
+    st.write(result)
