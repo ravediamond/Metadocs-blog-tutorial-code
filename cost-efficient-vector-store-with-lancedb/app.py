@@ -51,9 +51,9 @@ uploaded_file = st.file_uploader("Choose a text file", type="txt")
 
 if uploaded_file is not None:
     string_data = uploaded_file.getvalue().decode("utf-8")
-    splitted_data = string_data.split("\n\n")
+    split_data = string_data.split("\n\n")
 
-    vector_store.add_texts(splitted_data)
+    vector_store.add_texts(split_data)
 
 question = st.text_input("Input your question for the uploaded document")
 
