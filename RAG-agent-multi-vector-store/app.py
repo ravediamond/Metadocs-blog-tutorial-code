@@ -1,22 +1,19 @@
 import os
+from typing import Literal, TypedDict, List
+
 
 from dotenv import load_dotenv
 import streamlit as st
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.vectorstores import FAISS
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
-
-# Added
-from langchain.tools.retriever import create_retriever_tool
-from typing import Annotated, Literal, Sequence, TypedDict, List
-from langchain_core.messages import BaseMessage
-from langgraph.graph.message import add_messages
 from langchain_core.pydantic_v1 import BaseModel, Field
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langgraph.graph import END, StateGraph, START
 
 # Load the variables from .env
 load_dotenv()
+
 
 # Data model
 class RouteQuery(BaseModel):
@@ -57,8 +54,22 @@ answer the question because it does't match with the vector stores.
 Question: {question}
 """
 
+not_answerable_template = """The following question cannot be answered using the following vector stores:
+- clean_energy: a speech to advocates for a unified commitment to transitioning to clean energy through solar, 
+wind, geothermal, and energy-efficient technologies, emphasizing the importance of community action, 
+education, and innovation in creating a sustainable future.
+- state_of_the_union: the State of the Union address emphasizes the resilience of the American people, 
+highlights strong economic recovery efforts, pledges support for Ukraine, and calls for unity in facing domestic and global challenges.
+
+Explain to the question writer why it is not possible to answer this question using the vector store 
+and give some advices if possible to make an answerable question.
+
+Question: {question}
+"""
+
 rag_prompt = ChatPromptTemplate.from_template(rag_template)
 route_prompt = ChatPromptTemplate.from_template(router_template)
+not_answerable_prompt = ChatPromptTemplate.from_template(not_answerable_template)
 model = ChatOpenAI(
     temperature=0,
     model_name="gpt-4o-2024-08-06",
@@ -78,15 +89,12 @@ clean_energy_vectorstore = FAISS.from_texts(
 )
 clean_energy_retriever = clean_energy_vectorstore.as_retriever()
 
-rag_chain = (
-        rag_prompt
-        | model
-        | StrOutputParser()
-    )
+rag_chain = rag_prompt | model | StrOutputParser()
 
 structured_model_router = model.with_structured_output(RouteQuery)
 question_router = route_prompt | structured_model_router
 
+not_answerable_chain = not_answerable_prompt | model | StrOutputParser()
 
 
 def state_of_the_union_retrieve(state):
@@ -144,6 +152,24 @@ def generate(state):
     return {"documents": documents, "question": question, "generation": generation}
 
 
+def not_answerable_generate(state):
+    """
+    Generate answer in case of not answerable decision
+
+    Args:
+        state (dict): The current graph state
+
+    Returns:
+        state (dict): New key added to state, generation, that contains LLM generation
+    """
+    print("---GENERATE---")
+    question = state["question"]
+
+    # Not answerable generation
+    generation = not_answerable_chain.invoke({"question": question})
+    return {"documents": None, "question": question, "generation": generation}
+
+
 def route_question(state):
     """
     Route question to corresponding RAG.
@@ -169,11 +195,39 @@ def route_question(state):
         return "not_answerable"
 
 
+# Define the nodes
+workflow = StateGraph(GraphState)
+workflow.add_node("state_of_the_union_retrieve", state_of_the_union_retrieve)
+workflow.add_node("clean_energy_retrieve", clean_energy_retrieve)
+workflow.add_node("generate", generate)
+workflow.add_node("not_answerable_generate", not_answerable_generate)
+
+# Build graph
+workflow.add_conditional_edges(
+    START,
+    route_question,
+    {
+        "state_of_the_union": "state_of_the_union_retrieve",
+        "clean_energy": "clean_energy_retrieve",
+        "not_answerable": "not_answerable_generate",
+    },
+)
+
+workflow.add_edge("state_of_the_union_retrieve", "generate")
+workflow.add_edge("clean_energy_retrieve", "generate")
+workflow.add_edge("generate", END)
+workflow.add_edge("not_answerable_generate", END)
+
+# Compile
+graph = workflow.compile()
+
+
 st.title("Hello, Metadocs readers!")
 
+question = st.text_input("Input your question for the uploaded document")
+inputs = {"question": question}
 
-    question = st.text_input("Input your question for the uploaded document")
-
-    result = chain.invoke(question)
-
-    st.write(result)
+if question:
+    result = None
+    for output in graph.stream(inputs):
+        st.write(output)
