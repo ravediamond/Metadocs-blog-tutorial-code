@@ -11,6 +11,7 @@ from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langgraph.graph import END, StateGraph, START
 
+
 # Load the variables from .env
 load_dotenv()
 
@@ -221,8 +222,9 @@ workflow.add_edge("not_answerable_generate", END)
 # Compile
 graph = workflow.compile()
 
-
 st.title("Hello, Metadocs readers!")
+
+st.image(graph.get_graph(xray=True).draw_mermaid_png())
 
 question = st.text_input("Input your question for the uploaded document")
 inputs = {"question": question}
