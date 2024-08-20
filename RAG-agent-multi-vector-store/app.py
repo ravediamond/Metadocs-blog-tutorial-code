@@ -48,9 +48,13 @@ Question: {question}
 """
 
 router_template = """You are an expert at routing a user question to different vector stores.
-There is 2 vector stores, one about the state of the union (USA) and the other about clean_energy.
-Return the corresponding vectors store depending of the topics of the question or just say that you
-answer the question because it does't match with the vector stores.
+There are 2 vector stores:
+- clean_energy: a speech to advocates for a unified commitment to transitioning to clean energy through solar, 
+wind, geothermal, and energy-efficient technologies, emphasizing the importance of community action, 
+education, and innovation in creating a sustainable future.
+- state_of_the_union: the State of the Union address emphasizes the resilience of the American people, 
+highlights strong economic recovery efforts, pledges support for Ukraine, and calls for unity in facing domestic and global challenges.
+Return the corresponding vectors store depending of the topics of the question or just not_answerable because it does't match with the vector stores.
 
 Question: {question}
 """
@@ -198,6 +202,7 @@ def route_question(state):
 
 # Define the nodes
 workflow = StateGraph(GraphState)
+
 workflow.add_node("state_of_the_union_retrieve", state_of_the_union_retrieve)
 workflow.add_node("clean_energy_retrieve", clean_energy_retrieve)
 workflow.add_node("generate", generate)
