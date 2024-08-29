@@ -1,0 +1,17 @@
+VRFBs: vanadium redox flow batteries
+SSB: solid-state batteries
+LDES: long-duration energy storage
+HESS: Hybrid energy storage systems
+PV: photovoltaic
+DERs: distributed energy resources
+FRS: frequency response services
+ESS: energy storage systems
+GSES: grid-scale energy storage
+PQ: power quality
+DoD: depth of discharge
+BESS: battery energy storage systems
+FRS: frequency response services
+EMS: energy management systems
+DSM: demand-side management
+VRE: variable renewable energy
+LMP: locational marginal pricing
