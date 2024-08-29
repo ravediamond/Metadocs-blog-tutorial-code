@@ -124,7 +124,8 @@ def generate(state):
 
     # RAG generation
     generation = rag_chain.invoke({"context": documents, "question": question})
-    return {"documents": documents, "question": question, "generation": generation}
+    # return {"documents": documents, "question": question, "generation": generation}
+    return {"generation": generation}
 
 
 def get_vocabulary(state):
@@ -140,7 +141,7 @@ def get_vocabulary(state):
     print("---GET_VOCABULARY---")
     question = state["question"]
 
-    return {"question": question, "vocabulary": clean_energy_vocabulary}
+    return {"vocabulary": clean_energy_vocabulary}
 
 
 def rewrite_question(state):
@@ -184,7 +185,7 @@ def generate(state):
 
     # RAG generation
     generation = rag_chain.invoke({"context": documents, "question": question})
-    return {"documents": documents, "question": question, "generation": generation}
+    return {"generation": generation}
 
 
 def grade_question(state):
