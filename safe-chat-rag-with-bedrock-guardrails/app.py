@@ -1,19 +1,26 @@
 import streamlit as st
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_aws.chat_models import ChatBedrock
 from langchain_core.output_parsers import StrOutputParser
-from langchain_aws.chat_models import BedrockChat
 
 
 aws_region_name = "eu-west-1"
-credentials_profile_name = "default"
-claude_3_5_sonnet = "anthropic.claude-3-sonnet-20240229-v1:0"
+claude_3_5_sonnet = "eu.anthropic.claude-3-5-sonnet-20240620-v1:0"
+guardrail_id = "GUARDRAIL_ID"
+guardrail_version = "1"
 
-llm = BedrockChat(
+llm = ChatBedrock(
     model_id=claude_3_5_sonnet,
-    credentials_profile_name=credentials_profile_name,
     region_name=aws_region_name,
+    guardrails={
+        "guardrailIdentifier": guardrail_id,
+        "guardrailVersion": guardrail_version,
+    },
 )
+
+chain = llm | StrOutputParser()
 
 question = st.text_input("Input your question")
 
-result = llm.invoke(question)
+if question:
+    result = chain.invoke(question)
+    st.write(result)
