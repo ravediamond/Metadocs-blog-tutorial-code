@@ -1,0 +1,20 @@
+[project]
+name = "multi-agent-supervisor-agent"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "ravindu.somawansa",email = "ravindu.somawansa@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10,<4.0.0"
+dependencies = [
+    "langgraph-supervisor (>=0.0.10,<0.0.11)",
+    "langgraph (>=0.3.18,<0.4.0)",
+    "langchain-openai (>=0.3.9,<0.4.0)",
+    "python-dotenv (>=1.0.1,<2.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
